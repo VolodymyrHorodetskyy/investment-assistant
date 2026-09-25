@@ -145,7 +145,32 @@ TDLib stores its authenticated database under `./data/telegram`. Subsequent star
 
 ## Configure Telegram sources
 
-Source mutation is intentionally a local command-line operation. There are no public REST mutation endpoints on port 8080.
+Sources can be managed through the development REST API. Telegram must report `CONNECTED` before discovery, adding a source, or re-enabling one. Metadata supplied by Telegram is authoritative; `POST` accepts only a Telegram chat ID.
+
+```bash
+# Discover channels and groups in the authenticated account
+curl http://localhost:8080/api/telegram/sources/available
+
+# Monitor one source and import up to 100 recent messages
+curl -X POST http://localhost:8080/api/telegram/sources \
+  -H 'Content-Type: application/json' \
+  -d '{"telegramId":-1001234567890}'
+
+# List monitored sources and inspect recent messages
+curl 'http://localhost:8080/api/telegram/sources?enabled=true'
+curl 'http://localhost:8080/api/telegram/sources/1/messages?limit=20'
+
+# Disable while preserving the source and all collected messages
+curl -X PATCH http://localhost:8080/api/telegram/sources/1 \
+  -H 'Content-Type: application/json' \
+  -d '{"enabled":false}'
+```
+
+The API also provides `GET /api/telegram/sources/{id}`, `GET /api/telegram/messages?telegramId=...`, and `GET /api/telegram/stats`. Message limits default to 20 and are capped at 200. Historical imports default to `APP_TELEGRAM_HISTORY_LIMIT` and accept a per-request `historyLimit` from 1 to 1000. Errors use a stable `{ "code", "message" }` response without stack traces.
+
+There is intentionally no REST `DELETE` endpoint. Disabling a source stops new ingestion while preserving its configuration and history.
+
+The original local command-line administration remains available for recovery and offline use.
 
 Add a public channel username:
 
@@ -194,19 +219,21 @@ docker compose run --rm \
   investment-assistant --app.telegram.admin.command=message-count
 ```
 
-The `telegram_source` table stores channel configuration. The `telegram_message` table stores the source, TDLib message ID, publication timestamp, text or media caption, and a message link when TDLib can provide one. New messages and message-content edits are upserted. Photos, videos, and documents are not downloaded in Stage 2.
+The `telegram_source` table stores channel/group configuration and ingestion timestamps. The `telegram_message` table stores the source, TDLib message ID, publication timestamp, sender metadata when available, text or media caption, and a message link when TDLib can provide one. New messages and message-content edits are upserted. Photos, videos, and documents are not downloaded in Stage 2.
 
 ## Security notes
 
 - `.env`, `data/`, SQLite files, private keys, PEM files, and common TDLib session directories are ignored by Git.
 - Telegram verification codes and 2FA passwords are accepted only by the interactive console flow and are not persisted in the application database. The 2FA password uses hidden terminal input.
-- Source changes use local CLI commands because the DEV HTTP port can be publicly reachable.
+- The development REST API currently has no authentication. Because port 8080 may be publicly reachable, its `POST` and `PATCH` endpoints must not remain exposed without authentication beyond DEV/testing. The controller and service boundary is ready for a later Spring Security layer.
+- The REST API never returns Telegram credentials, phone numbers, verification codes, 2FA passwords, or TDLib session data.
 - `/api/status` exposes only connection states, never credentials, phone numbers, session details, or environment values.
 
 ## Database migrations
 
 - `V1` creates `app_metadata`.
 - `V2` creates `telegram_source` and `telegram_message`, their constraints and indexes, and advances `schema.version` to `2`.
+- `V3` adds source type, last-ingestion time, sender metadata, and the source/message ordering index.
 
 SQLite foreign keys are enabled for every connection. Deleting a source cascades to its stored messages. Message duplicates are prevented by a database constraint and handled with an upsert so edited text/captions replace the previously stored content.
 

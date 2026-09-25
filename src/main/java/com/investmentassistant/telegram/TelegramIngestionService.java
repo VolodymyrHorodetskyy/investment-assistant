@@ -69,6 +69,7 @@ public class TelegramIngestionService implements TelegramClientGateway.Listener,
                         .loadRecentMessages(resolved.telegramId(), historyLimit)
                         .join();
                 messages.forEach(message -> persist(source.id(), message));
+                sourceRepository.markIngested(source.id(), java.time.Instant.now());
                 log.info("Historical import completed: sourceId={}, messages={}", source.id(), messages.size());
             } catch (RuntimeException exception) {
                 log.error("Telegram source import failed: sourceId={}, reason={}",
@@ -85,6 +86,7 @@ public class TelegramIngestionService implements TelegramClientGateway.Listener,
     private void persist(long sourceId, TelegramRawMessage rawMessage) {
         NormalizedTelegramMessage normalized = normalizer.normalize(rawMessage);
         messageRepository.save(sourceId, normalized);
+        sourceRepository.markIngested(sourceId, java.time.Instant.now());
         log.info("Telegram message persisted: sourceId={}, telegramMessageId={}",
                 sourceId, normalized.telegramMessageId());
     }

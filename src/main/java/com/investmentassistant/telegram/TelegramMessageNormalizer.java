@@ -11,6 +11,8 @@ public class TelegramMessageNormalizer {
                 message.telegramSourceId(),
                 message.telegramMessageId(),
                 message.publishedAt(),
+                message.senderTelegramId(),
+                blankToNull(message.senderDisplayName()),
                 content,
                 blankToNull(message.messageUrl()));
     }

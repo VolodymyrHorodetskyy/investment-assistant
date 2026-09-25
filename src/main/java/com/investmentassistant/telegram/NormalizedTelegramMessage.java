@@ -6,6 +6,8 @@ public record NormalizedTelegramMessage(
         long telegramSourceId,
         long telegramMessageId,
         Instant publishedAt,
+        Long senderTelegramId,
+        String senderDisplayName,
         String text,
         String messageUrl) {
 }

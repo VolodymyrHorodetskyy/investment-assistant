@@ -60,6 +60,16 @@ public class TelegramRuntimeConfiguration {
         }
 
         @Override
+        public CompletableFuture<ResolvedTelegramSource> resolve(long telegramId) {
+            return CompletableFuture.failedFuture(new IllegalStateException("Telegram credentials are incomplete"));
+        }
+
+        @Override
+        public CompletableFuture<List<AvailableTelegramSource>> listAvailableSources() {
+            return CompletableFuture.failedFuture(new IllegalStateException("Telegram credentials are incomplete"));
+        }
+
+        @Override
         public CompletableFuture<List<TelegramRawMessage>> loadRecentMessages(long telegramSourceId, int limit) {
             return CompletableFuture.failedFuture(new IllegalStateException("Telegram credentials are incomplete"));
         }

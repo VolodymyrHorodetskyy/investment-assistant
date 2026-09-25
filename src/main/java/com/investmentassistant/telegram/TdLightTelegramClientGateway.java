@@ -3,10 +3,16 @@ package com.investmentassistant.telegram;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
 
 import com.investmentassistant.config.AppProperties;
 import it.tdlight.Log;
@@ -25,6 +31,7 @@ import org.slf4j.LoggerFactory;
 public class TdLightTelegramClientGateway implements TelegramClientGateway {
 
     private static final Logger log = LoggerFactory.getLogger(TdLightTelegramClientGateway.class);
+    private static final int EMPTY_HISTORY_RETRIES = 3;
 
     private final AppProperties.Telegram properties;
     private SimpleTelegramClientFactory clientFactory;
@@ -80,31 +87,133 @@ public class TdLightTelegramClientGateway implements TelegramClientGateway {
                 ? client.send(new TdApi.GetChat(source.telegramId()))
                 : client.send(new TdApi.SearchPublicChat(source.username()));
 
-        return chatFuture.thenCompose(chat -> {
-            if (!(chat.type instanceof TdApi.ChatTypeSupergroup supergroupType) || !supergroupType.isChannel) {
-                return CompletableFuture.failedFuture(
-                        new IllegalArgumentException("Configured Telegram source is not a channel"));
-            }
-            return client.send(new TdApi.GetSupergroup(supergroupType.supergroupId))
-                    .thenApply(supergroup -> new ResolvedTelegramSource(
-                            chat.id,
-                            primaryUsername(supergroup.usernames),
-                            chat.title));
-        });
+        return chatFuture.thenCompose(this::resolveChat);
+    }
+
+    @Override
+    public CompletableFuture<ResolvedTelegramSource> resolve(long telegramId) {
+        return client.send(new TdApi.GetChat(telegramId)).thenCompose(this::resolveChat);
+    }
+
+    @Override
+    public CompletableFuture<List<AvailableTelegramSource>> listAvailableSources() {
+        CompletableFuture<List<TdApi.Chat>> main = loadChats(new TdApi.ChatListMain());
+        CompletableFuture<List<TdApi.Chat>> archive = loadChats(new TdApi.ChatListArchive());
+        return main.thenCombine(archive, (mainChats, archivedChats) -> {
+                    Map<Long, TdApi.Chat> unique = new LinkedHashMap<>();
+                    mainChats.forEach(chat -> unique.put(chat.id, chat));
+                    archivedChats.forEach(chat -> unique.put(chat.id, chat));
+                    return unique.values().stream().toList();
+                })
+                .thenCompose(chats -> {
+                    List<CompletableFuture<AvailableTelegramSource>> futures = chats.stream()
+                            .filter(this::isSupportedSource)
+                            .map(this::toAvailableSource)
+                            .toList();
+                    return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
+                            .thenApply(ignored -> futures.stream()
+                                    .map(CompletableFuture::join)
+                                    .sorted((left, right) -> left.title().compareToIgnoreCase(right.title()))
+                                    .toList());
+                });
+    }
+
+    private CompletableFuture<ResolvedTelegramSource> resolveChat(TdApi.Chat chat) {
+        if (chat.type instanceof TdApi.ChatTypeBasicGroup) {
+            return CompletableFuture.completedFuture(new ResolvedTelegramSource(
+                    chat.id, TelegramSourceType.GROUP, null, chat.title));
+        }
+        if (!(chat.type instanceof TdApi.ChatTypeSupergroup supergroupType)) {
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("Telegram chat is not a channel or group"));
+        }
+
+        return client.send(new TdApi.GetSupergroup(supergroupType.supergroupId))
+                .thenApply(supergroup -> new ResolvedTelegramSource(
+                        chat.id,
+                        supergroupType.isChannel ? TelegramSourceType.CHANNEL : TelegramSourceType.SUPERGROUP,
+                        primaryUsername(supergroup.usernames),
+                        chat.title));
     }
 
     @Override
     public CompletableFuture<List<TelegramRawMessage>> loadRecentMessages(long telegramSourceId, int limit) {
-        int safeLimit = Math.max(1, Math.min(limit, 100));
-        return client.send(new TdApi.GetChatHistory(telegramSourceId, 0, 0, safeLimit, false))
+        int safeLimit = Math.max(1, Math.min(limit, 1000));
+        return loadHistoryPage(
+                telegramSourceId, 0, safeLimit, new ArrayList<>(), new HashSet<>(), EMPTY_HISTORY_RETRIES);
+    }
+
+    private CompletableFuture<List<TelegramRawMessage>> loadHistoryPage(
+            long chatId,
+            long fromMessageId,
+            int remaining,
+            List<TelegramRawMessage> collected,
+            Set<Long> seenMessageIds,
+            int emptyRetriesRemaining) {
+        int pageSize = Math.min(remaining + (fromMessageId == 0 ? 0 : 1), 100);
+        return client.send(new TdApi.GetChatHistory(chatId, fromMessageId, 0, pageSize, false))
                 .thenCompose(messages -> {
-                    List<CompletableFuture<TelegramRawMessage>> futures = Arrays.stream(messages.messages)
+                    List<TdApi.Message> page = Arrays.stream(messages.messages)
                             .filter(Objects::nonNull)
+                            .filter(message -> seenMessageIds.add(message.id))
+                            .toList();
+                    if (page.isEmpty()) {
+                        if (emptyRetriesRemaining > 0) {
+                            return CompletableFuture.supplyAsync(
+                                            () -> null,
+                                            CompletableFuture.delayedExecutor(300, TimeUnit.MILLISECONDS))
+                                    .thenCompose(ignored -> loadHistoryPage(
+                                            chatId,
+                                            fromMessageId,
+                                            remaining,
+                                            collected,
+                                            seenMessageIds,
+                                            emptyRetriesRemaining - 1));
+                        }
+                        return CompletableFuture.completedFuture(List.copyOf(collected));
+                    }
+                    List<CompletableFuture<TelegramRawMessage>> futures = page.stream()
                             .map(this::toRawMessage)
+                            .toList();
+                    return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
+                            .thenCompose(ignored -> {
+                                futures.forEach(future -> collected.add(future.join()));
+                                int nextRemaining = remaining - page.size();
+                                if (nextRemaining <= 0) {
+                                    return CompletableFuture.completedFuture(List.copyOf(collected));
+                                }
+                                return loadHistoryPage(
+                                        chatId,
+                                        page.getLast().id,
+                                        nextRemaining,
+                                        collected,
+                                        seenMessageIds,
+                                        EMPTY_HISTORY_RETRIES);
+                            });
+                });
+    }
+
+    private CompletableFuture<List<TdApi.Chat>> loadChats(TdApi.ChatList chatList) {
+        return client.send(new TdApi.LoadChats(chatList, 1000))
+                .handle((ignored, exception) -> null)
+                .thenCompose(ignored -> client.send(new TdApi.GetChats(chatList, 1000)))
+                .thenCompose(chats -> {
+                    List<CompletableFuture<TdApi.Chat>> futures = Arrays.stream(chats.chatIds)
+                            .mapToObj(chatId -> client.send(new TdApi.GetChat(chatId)))
                             .toList();
                     return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
                             .thenApply(ignored -> futures.stream().map(CompletableFuture::join).toList());
                 });
+    }
+
+    private boolean isSupportedSource(TdApi.Chat chat) {
+        return chat.type instanceof TdApi.ChatTypeBasicGroup
+                || chat.type instanceof TdApi.ChatTypeSupergroup;
+    }
+
+    private CompletableFuture<AvailableTelegramSource> toAvailableSource(TdApi.Chat chat) {
+        return resolveChat(chat).thenApply(resolved -> new AvailableTelegramSource(
+                resolved.telegramId(), resolved.type(), resolved.title(), resolved.username()));
     }
 
     private void onAuthorizationState(TdApi.UpdateAuthorizationState update) {
@@ -152,19 +261,45 @@ public class TdLightTelegramClientGateway implements TelegramClientGateway {
     }
 
     private CompletableFuture<TelegramRawMessage> toRawMessage(TdApi.Message message) {
-        return client.send(new TdApi.GetMessageLink(message.chatId, message.id, 0, 0, "", false, false))
-                .thenApply(link -> toRawMessage(message, link.link))
-                .exceptionally(exception -> toRawMessage(message, null));
+        CompletableFuture<String> link = client
+                .send(new TdApi.GetMessageLink(message.chatId, message.id, 0, 0, "", false, false))
+                .thenApply(result -> result.link)
+                .exceptionally(exception -> null);
+        CompletableFuture<SenderMetadata> sender = senderMetadata(message.senderId)
+                .exceptionally(exception -> SenderMetadata.EMPTY);
+        return link.thenCombine(sender, (messageUrl, senderMetadata) ->
+                toRawMessage(message, messageUrl, senderMetadata));
     }
 
-    private TelegramRawMessage toRawMessage(TdApi.Message message, String messageUrl) {
+    private TelegramRawMessage toRawMessage(
+            TdApi.Message message, String messageUrl, SenderMetadata senderMetadata) {
         return new TelegramRawMessage(
                 message.chatId,
                 message.id,
                 Instant.ofEpochSecond(message.date),
+                senderMetadata.telegramId(),
+                senderMetadata.displayName(),
                 text(message.content),
                 caption(message.content),
                 messageUrl);
+    }
+
+    private CompletableFuture<SenderMetadata> senderMetadata(TdApi.MessageSender sender) {
+        if (sender instanceof TdApi.MessageSenderUser userSender) {
+            return client.send(new TdApi.GetUser(userSender.userId))
+                    .thenApply(user -> new SenderMetadata(user.id, displayName(user.firstName, user.lastName)));
+        }
+        if (sender instanceof TdApi.MessageSenderChat chatSender) {
+            return client.send(new TdApi.GetChat(chatSender.chatId))
+                    .thenApply(chat -> new SenderMetadata(chat.id, chat.title));
+        }
+        return CompletableFuture.completedFuture(SenderMetadata.EMPTY);
+    }
+
+    private String displayName(String firstName, String lastName) {
+        String combined = ((firstName == null ? "" : firstName) + " "
+                + (lastName == null ? "" : lastName)).trim();
+        return combined.isBlank() ? null : combined;
     }
 
     private String text(TdApi.MessageContent content) {
@@ -202,6 +337,11 @@ public class TdLightTelegramClientGateway implements TelegramClientGateway {
         return throwable instanceof CompletionException && throwable.getCause() != null
                 ? throwable.getCause()
                 : throwable;
+    }
+
+    private record SenderMetadata(Long telegramId, String displayName) {
+
+        private static final SenderMetadata EMPTY = new SenderMetadata(null, null);
     }
 
     @Override

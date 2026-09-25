@@ -90,9 +90,9 @@ class TelegramStageTwoIntegrationTests {
         Instant publishedAt = Instant.parse("2026-09-25T10:15:30Z");
 
         messageRepository.save(source.id(), new NormalizedTelegramMessage(
-                source.telegramId(), 42, publishedAt, "Original", "https://t.me/example/42"));
+                source.telegramId(), 42, publishedAt, null, null, "Original", "https://t.me/example/42"));
         messageRepository.save(source.id(), new NormalizedTelegramMessage(
-                source.telegramId(), 42, publishedAt, "Edited", "https://t.me/example/42"));
+                source.telegramId(), 42, publishedAt, null, null, "Edited", "https://t.me/example/42"));
 
         assertThat(messageRepository.count()).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject(
@@ -106,11 +106,14 @@ class TelegramStageTwoIntegrationTests {
     void normalizerUsesTextThenCaptionAndAllowsEmptyMediaMessages() {
         Instant publishedAt = Instant.parse("2026-09-25T10:15:30Z");
 
-        assertThat(normalizer.normalize(new TelegramRawMessage(1, 1, publishedAt, "text", "caption", null)).text())
+        assertThat(normalizer.normalize(new TelegramRawMessage(
+                1, 1, publishedAt, null, null, "text", "caption", null)).text())
                 .isEqualTo("text");
-        assertThat(normalizer.normalize(new TelegramRawMessage(1, 2, publishedAt, null, "caption", null)).text())
+        assertThat(normalizer.normalize(new TelegramRawMessage(
+                1, 2, publishedAt, null, null, null, "caption", null)).text())
                 .isEqualTo("caption");
-        assertThat(normalizer.normalize(new TelegramRawMessage(1, 3, publishedAt, null, null, null)).text())
+        assertThat(normalizer.normalize(new TelegramRawMessage(
+                1, 3, publishedAt, null, null, null, null, null)).text())
                 .isNull();
     }
 
@@ -162,13 +165,29 @@ class TelegramStageTwoIntegrationTests {
 
         void emit(long messageId, String text) {
             listener.onMessage(new TelegramRawMessage(
-                    telegramId, messageId, Instant.parse("2026-09-25T10:20:30Z"), text, null, null));
+                    telegramId, messageId, Instant.parse("2026-09-25T10:20:30Z"),
+                    123L, "Test Sender", text, null, null));
         }
 
         @Override
         public CompletableFuture<ResolvedTelegramSource> resolve(TelegramSource source) {
             return CompletableFuture.completedFuture(
-                    new ResolvedTelegramSource(telegramId, "market_news", "Market News"));
+                    new ResolvedTelegramSource(
+                            telegramId, com.investmentassistant.telegram.TelegramSourceType.CHANNEL,
+                            "market_news", "Market News"));
+        }
+
+        @Override
+        public CompletableFuture<ResolvedTelegramSource> resolve(long telegramId) {
+            return CompletableFuture.completedFuture(new ResolvedTelegramSource(
+                    telegramId, com.investmentassistant.telegram.TelegramSourceType.CHANNEL,
+                    "market_news", "Market News"));
+        }
+
+        @Override
+        public CompletableFuture<List<com.investmentassistant.telegram.AvailableTelegramSource>>
+                listAvailableSources() {
+            return CompletableFuture.completedFuture(List.of());
         }
 
         @Override
@@ -176,8 +195,10 @@ class TelegramStageTwoIntegrationTests {
             historyRequestCount++;
             Instant publishedAt = Instant.parse("2026-09-25T10:15:30Z");
             return CompletableFuture.completedFuture(List.of(
-                    new TelegramRawMessage(telegramSourceId, 1, publishedAt, "one", null, null),
-                    new TelegramRawMessage(telegramSourceId, 2, publishedAt, null, "two", null)));
+                    new TelegramRawMessage(
+                            telegramSourceId, 1, publishedAt, 123L, "Test Sender", "one", null, null),
+                    new TelegramRawMessage(
+                            telegramSourceId, 2, publishedAt, 123L, "Test Sender", null, "two", null)));
         }
 
         @Override

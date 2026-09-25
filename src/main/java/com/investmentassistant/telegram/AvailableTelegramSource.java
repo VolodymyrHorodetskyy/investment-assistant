@@ -1,8 +1,8 @@
 package com.investmentassistant.telegram;
 
-public record ResolvedTelegramSource(
+public record AvailableTelegramSource(
         long telegramId,
         TelegramSourceType type,
-        String username,
-        String title) {
+        String title,
+        String username) {
 }

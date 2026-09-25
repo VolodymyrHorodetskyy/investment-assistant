@@ -62,9 +62,9 @@ class StageOneIntegrationTests {
         String schemaVersion = jdbcTemplate.queryForObject(
                 "SELECT \"value\" FROM app_metadata WHERE \"key\" = 'schema.version'", String.class);
 
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("2");
-        assertThat(migrationCount).isEqualTo(2);
-        assertThat(schemaVersion).isEqualTo("2");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("3");
+        assertThat(migrationCount).isEqualTo(3);
+        assertThat(schemaVersion).isEqualTo("3");
         assertThat(Files.isRegularFile(DATABASE_PATH)).isTrue();
     }
 

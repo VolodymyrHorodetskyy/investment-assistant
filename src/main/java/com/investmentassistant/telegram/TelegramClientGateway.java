@@ -9,6 +9,10 @@ public interface TelegramClientGateway extends AutoCloseable {
 
     CompletableFuture<ResolvedTelegramSource> resolve(TelegramSource source);
 
+    CompletableFuture<ResolvedTelegramSource> resolve(long telegramId);
+
+    CompletableFuture<List<AvailableTelegramSource>> listAvailableSources();
+
     CompletableFuture<List<TelegramRawMessage>> loadRecentMessages(long telegramSourceId, int limit);
 
     interface Listener {
