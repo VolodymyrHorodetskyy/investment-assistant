@@ -50,16 +50,17 @@ The default SQLite file is `./data/investment-assistant.db`. Flyway applies migr
 ## Run with Docker Compose
 
 ```bash
+mkdir -p data
 docker compose up --build
 ```
 
-Compose exposes port `8080` and stores `/app/data` in the named volume `investment-assistant-data`, so the SQLite database survives container replacement and image rebuilds without host UID/permission problems. Stop the service with:
+Compose exposes port `8080` and bind-mounts the host's `./data` directory to `/app/data`. The container runs as UID/GID `1000:1000` by default, matching the normal first Linux user; `APP_UID` and `APP_GID` can override those IDs when needed. The database therefore survives container replacement and image rebuilds at the visible host path `./data/investment-assistant.db`. Stop the service with:
 
 ```bash
 docker compose down
 ```
 
-The named volume remains after `docker compose down`. Running `docker compose down --volumes` intentionally removes it and its database.
+The database remains in `./data` after `docker compose down`.
 
 ## Configuration
 
@@ -68,6 +69,8 @@ Spring reads defaults from `src/main/resources/application.yml`. Environment var
 | Environment variable | Default | Purpose |
 | --- | --- | --- |
 | `APP_DATABASE_PATH` | `./data/investment-assistant.db` | SQLite database file |
+| `APP_UID` | `1000` | Container process UID used by Docker Compose |
+| `APP_GID` | `1000` | Container process GID used by Docker Compose |
 | `APP_TELEGRAM_ENABLED` | `false` | Reserved for Telegram integration |
 | `APP_OPENAI_ENABLED` | `false` | Reserved for OpenAI integration |
 | `APP_IBKR_ENABLED` | `false` | Reserved for IBKR integration |

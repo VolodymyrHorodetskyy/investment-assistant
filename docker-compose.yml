@@ -2,6 +2,7 @@ services:
   investment-assistant:
     build:
       context: .
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
     environment:
       APP_DATABASE_PATH: /app/data/investment-assistant.db
       APP_TELEGRAM_ENABLED: "false"
@@ -11,8 +12,5 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - investment-assistant-data:/app/data
+      - ./data:/app/data
     restart: unless-stopped
-
-volumes:
-  investment-assistant-data:
