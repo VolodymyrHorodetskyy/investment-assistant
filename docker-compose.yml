@@ -1,0 +1,18 @@
+services:
+  investment-assistant:
+    build:
+      context: .
+    environment:
+      APP_DATABASE_PATH: /app/data/investment-assistant.db
+      APP_TELEGRAM_ENABLED: "false"
+      APP_OPENAI_ENABLED: "false"
+      APP_IBKR_ENABLED: "false"
+      APP_MARKET_DATA_ENABLED: "false"
+    ports:
+      - "8080:8080"
+    volumes:
+      - investment-assistant-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  investment-assistant-data:

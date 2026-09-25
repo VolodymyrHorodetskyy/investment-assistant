@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: investment-assistant
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+app:
+  database:
+    path: ${APP_DATABASE_PATH:./data/investment-assistant.db}
+  telegram:
+    enabled: ${APP_TELEGRAM_ENABLED:false}
+  openai:
+    enabled: ${APP_OPENAI_ENABLED:false}
+  ibkr:
+    enabled: ${APP_IBKR_ENABLED:false}
+  market-data:
+    enabled: ${APP_MARKET_DATA_ENABLED:false}
