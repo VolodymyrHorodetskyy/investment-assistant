@@ -10,6 +10,12 @@ app:
     path: ${APP_DATABASE_PATH:./data/investment-assistant.db}
   telegram:
     enabled: ${APP_TELEGRAM_ENABLED:false}
+    api-id: ${TELEGRAM_API_ID:0}
+    api-hash: ${TELEGRAM_API_HASH:}
+    phone: ${TELEGRAM_PHONE:}
+    session-path: ${APP_TELEGRAM_SESSION_PATH:./data/telegram}
+    history-limit: ${APP_TELEGRAM_HISTORY_LIMIT:100}
+    authentication-mode: ${APP_TELEGRAM_AUTH_MODE:RUNTIME}
   openai:
     enabled: ${APP_OPENAI_ENABLED:false}
   ibkr:

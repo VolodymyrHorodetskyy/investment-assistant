@@ -1,5 +1,7 @@
 target/
 data/
+telegram-session/
+tdlight-session/
 *.class
 *.log
 *.ctxt

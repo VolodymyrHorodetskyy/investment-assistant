@@ -11,6 +11,9 @@ import java.nio.file.Path;
 import java.util.UUID;
 
 import com.investmentassistant.persistence.DatabaseStatusProbe;
+import com.investmentassistant.telegram.TelegramConnectionState;
+import com.investmentassistant.telegram.TelegramStatus;
+import org.junit.jupiter.api.BeforeEach;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,8 +44,16 @@ class StageOneIntegrationTests {
     @Autowired
     private DatabaseStatusProbe databaseStatusProbe;
 
+    @Autowired
+    private TelegramStatus telegramStatus;
+
     @LocalServerPort
     private int port;
+
+    @BeforeEach
+    void resetTelegramStatus() {
+        telegramStatus.set(TelegramConnectionState.DISABLED);
+    }
 
     @Test
     void flywayCreatesSchemaAndSeedsMetadata() {
@@ -51,9 +62,9 @@ class StageOneIntegrationTests {
         String schemaVersion = jdbcTemplate.queryForObject(
                 "SELECT \"value\" FROM app_metadata WHERE \"key\" = 'schema.version'", String.class);
 
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("1");
-        assertThat(migrationCount).isEqualTo(1);
-        assertThat(schemaVersion).isEqualTo("1");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("2");
+        assertThat(migrationCount).isEqualTo(2);
+        assertThat(schemaVersion).isEqualTo("2");
         assertThat(Files.isRegularFile(DATABASE_PATH)).isTrue();
     }
 
@@ -74,6 +85,25 @@ class StageOneIntegrationTests {
 
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).isEqualTo(
-                "{\"status\":\"UP\",\"database\":\"UP\",\"application\":\"investment-assistant\"}");
+                "{\"status\":\"UP\",\"database\":\"UP\",\"telegram\":\"DISABLED\","
+                        + "\"application\":\"investment-assistant\"}");
+    }
+
+    @Test
+    void statusEndpointIncludesCurrentTelegramState() throws Exception {
+        telegramStatus.set(TelegramConnectionState.AUTH_REQUIRED);
+
+        HttpResponse<String> response = getStatus();
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("\"telegram\":\"AUTH_REQUIRED\"");
+    }
+
+    private HttpResponse<String> getStatus() throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:" + port + "/api/status"))
+                .GET()
+                .build();
+        return HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
     }
 }
