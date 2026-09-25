@@ -111,6 +111,27 @@ Compose exposes port `8080` and mounts `./data` to `/app/data`. Both SQLite and 
 
 The runtime JVM is limited by percentage settings to remain conservative on the small DEV VM. TDLight adds a packaged native TDLib/OpenSSL 3 dependency to the single application image; it does not add another container.
 
+## Low-memory Oracle deployment
+
+The Oracle DEV VM uses a separate runtime-only Compose file. Maven compilation and tests run locally. The VM receives only the finished JAR and builds a thin Docker layer on top of the Java 21 JRE image; it never runs Maven or a JDK build.
+
+```bash
+./mvnw clean verify
+mkdir -p deploy
+cp target/investment-assistant-0.0.1-SNAPSHOT.jar deploy/application.jar
+
+# Stop the application before transfer to free memory on the small VM.
+ssh opc@ORACLE_HOST 'cd /home/opc/investment-assistant && docker compose -f docker-compose.oracle.yml stop'
+scp deploy/application.jar opc@ORACLE_HOST:/home/opc/investment-assistant/deploy/application.jar
+
+ssh opc@ORACLE_HOST \
+  'cd /home/opc/investment-assistant && \
+   docker compose -f docker-compose.oracle.yml build && \
+   docker compose -f docker-compose.oracle.yml up -d'
+```
+
+The runtime JVM uses `-Xms32m -Xmx160m`. SQLite and the TDLib session remain outside the image under `/home/opc/investment-assistant/data`, mounted at `/app/data`. The ignored `deploy/application.jar` can be replaced atomically for future deployments without transferring a complete Docker image.
+
 ## First Telegram authentication
 
 Perform this once in a trusted local terminal. Do not expose verification codes or the 2FA password through HTTP.

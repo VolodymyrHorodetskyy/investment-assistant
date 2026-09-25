@@ -1,4 +1,5 @@
 target/
+deploy/*.jar
 data/
 telegram-session/
 tdlight-session/
