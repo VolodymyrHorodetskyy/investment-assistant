@@ -122,10 +122,12 @@ cp target/investment-assistant-0.0.1-SNAPSHOT.jar deploy/application.jar
 
 # Stop the application before transfer to free memory on the small VM.
 ssh opc@ORACLE_HOST 'cd /home/opc/investment-assistant && docker compose -f docker-compose.oracle.yml stop'
-scp deploy/application.jar opc@ORACLE_HOST:/home/opc/investment-assistant/deploy/application.jar
+scp deploy/application.jar opc@ORACLE_HOST:/home/opc/investment-assistant/deploy/application.jar.upload
 
 ssh opc@ORACLE_HOST \
   'cd /home/opc/investment-assistant && \
+   mv deploy/application.jar.upload deploy/application.jar && \
+   chmod 600 deploy/application.jar && \
    docker compose -f docker-compose.oracle.yml build && \
    docker compose -f docker-compose.oracle.yml up -d'
 ```
