@@ -156,6 +156,7 @@ public class TdLightTelegramClientGateway implements TelegramClientGateway {
                     List<TdApi.Message> page = Arrays.stream(messages.messages)
                             .filter(Objects::nonNull)
                             .filter(message -> seenMessageIds.add(message.id))
+                            .limit(remaining)
                             .toList();
                     if (page.isEmpty()) {
                         if (emptyRetriesRemaining > 0) {

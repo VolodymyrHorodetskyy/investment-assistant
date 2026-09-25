@@ -128,6 +128,17 @@ class TelegramApiIntegrationTests {
     }
 
     @Test
+    void capsHistoricalImportAtRequestedLimit() throws Exception {
+        JsonNode response = json(send(
+                "POST",
+                "/api/telegram/sources?historyLimit=1",
+                "{\"telegramId\":" + TELEGRAM_ID + "}"));
+
+        assertThat(response.get("historicalMessagesImported").asInt()).isEqualTo(1);
+        assertThat(messageRepository.count()).isEqualTo(1);
+    }
+
+    @Test
     void disablesAndReenablesWithoutDuplicatingHistory() throws Exception {
         TelegramSource source = monitoredSource();
 

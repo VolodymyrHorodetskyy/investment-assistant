@@ -91,7 +91,9 @@ public class TelegramSourceService {
         List<TelegramRawMessage> history = join(
                 client.loadRecentMessages(resolved.telegramId(), historyLimit),
                 "TELEGRAM_REQUEST_FAILED",
-                "Could not load Telegram message history");
+                "Could not load Telegram message history").stream()
+                .limit(historyLimit)
+                .toList();
         int inserted = 0;
         for (TelegramRawMessage message : history) {
             if (messageRepository.save(source.id(), normalizer.normalize(message))) {

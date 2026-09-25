@@ -67,7 +67,10 @@ public class TelegramIngestionService implements TelegramClientGateway.Listener,
                 log.info("Historical import started: sourceId={}, limit={}", source.id(), historyLimit);
                 List<TelegramRawMessage> messages = client
                         .loadRecentMessages(resolved.telegramId(), historyLimit)
-                        .join();
+                        .join()
+                        .stream()
+                        .limit(historyLimit)
+                        .toList();
                 messages.forEach(message -> persist(source.id(), message));
                 sourceRepository.markIngested(source.id(), java.time.Instant.now());
                 log.info("Historical import completed: sourceId={}, messages={}", source.id(), messages.size());
