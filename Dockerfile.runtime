@@ -2,7 +2,7 @@ FROM eclipse-temurin:21-jre
 
 WORKDIR /app
 
-COPY deploy/application.jar /app/application.jar
+COPY --chmod=0644 deploy/application.jar /app/application.jar
 
 EXPOSE 8080
 
