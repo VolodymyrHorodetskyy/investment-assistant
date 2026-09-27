@@ -132,7 +132,7 @@ ssh opc@ORACLE_HOST \
    docker compose -f docker-compose.oracle.yml up -d'
 ```
 
-The runtime JVM uses `-Xms32m -Xmx160m`. SQLite and the TDLib session remain outside the image under `/home/opc/investment-assistant/data`, mounted at `/app/data`. The ignored `deploy/application.jar` can be replaced atomically for future deployments without transferring a complete Docker image.
+The runtime JVM uses `-Xms32m -Xmx160m`. The container is capped at 256 MiB RAM plus 128 MiB swap, limited to 128 processes, and rotates its JSON logs at 10 MiB with three retained files. These limits protect the small VM from an unbounded JVM, native TDLib, thread, or log increase. SQLite and the TDLib session remain outside the image under `/home/opc/investment-assistant/data`, mounted at `/app/data`. The ignored `deploy/application.jar` can be replaced atomically for future deployments without transferring a complete Docker image.
 
 ## First Telegram authentication
 
